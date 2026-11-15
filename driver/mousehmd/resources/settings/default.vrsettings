@@ -1,0 +1,20 @@
+{
+    "driver_mousehmd": {
+        "windowX": 100,
+        "windowY": 100,
+        "windowWidth": 1600,
+        "windowHeight": 900,
+        "monoView": true,
+        "horizontalFovDeg": 100.0,
+        "renderScale": 1.0,
+        "displayFrequency": 60.0,
+        "ipdMeters": 0.063,
+        "headHeightMeters": 0.0,
+        "mouseDegPerPx": 0.12,
+        "keyDegPerSec": 60.0,
+        "smoothingMs": 0.0,
+        "grabStyle": true,
+        "anyWindow": false,
+        "disableDashboard": true
+    }
+}
