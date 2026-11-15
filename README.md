@@ -24,8 +24,19 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 ## SteamVR への登録
 
-1. `%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` に `driver\mousehmd` の絶対パスを追加
-2. `Steam\config\steamvr.vrsettings` の `steamvr.forcedDriver` を `"mousehmd"` にする
+SteamVR を終了した状態で行う。
+
+1. ドライバを登録する。SteamVR 同梱の `vrpathreg.exe`（`SteamVR\bin\win64` にある）を使うか、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` に `driver\mousehmd` の絶対パスを追加する。
+
+   ```powershell
+   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" adddriver "C:\path\to\mousehmd\driver\mousehmd"
+   ```
+
+   パスは DLL ではなく、`driver.vrdrivermanifest` のあるフォルダを絶対パスで指定する。
+2. `Steam\config\steamvr.vrsettings` の `steamvr` に `"forcedDriver": "mousehmd"` と `"activateMultipleDrivers": true` を書く。
+
+どちらも SteamVR 全体の設定で、ドライバを消しても残る。
+2 で書く 2 つの項目がすでにあった場合は、書き換える前の値を控えておく。アンインストールで元に戻すときに必要になる。
 
 ### 以前の版から更新する場合
 
@@ -105,6 +116,35 @@ vrmonitor://ignoredismissablewarning/DisplayInExtendedMode
 cd tools\dashboardwatch
 cargo run --release
 ```
+
+## 副作用
+
+| 対象 | 影響 |
+|---|---|
+| `steamvr.forcedDriver` | 登録手順で SteamVR のドライバ選択を `mousehmd` に固定する。実機の HMD を使うときは戻す必要がある |
+| キー入力 | 読んだキーは前面のアプリにも届くので、アプリが同じキーに操作を割り当てていると両方が動く。`anyWindow: true` にすると、どのウィンドウが前面でもマウスとキーの両方に反応する |
+| 装着状態 | 仮想 HMD は常に「装着中」と報告する。ヘッドセットを外したときの待機や一時停止は働かない |
+| 実行中の負荷 | 入力と姿勢通知のスレッドが約 2 ミリ秒間隔で動き、タイマー分解能 1 ミリ秒を要求する。CPU の起床回数と消費電力がわずかに増える |
+| 出力ファイル | `dashboardwatch` は実行したフォルダの `dashboardwatch.log` を上書きする |
+
+## アンインストール
+
+1. SteamVR を終了する。`dashboardwatch` を実行中なら、それも終了する。
+2. ドライバの登録を解除する。`vrpathreg.exe` を使うか、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` から `driver\mousehmd` のパスを削除する。
+
+   ```powershell
+   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" removedriver "C:\path\to\mousehmd\driver\mousehmd"
+   ```
+
+   パスは登録したときと同じ、`driver.vrdrivermanifest` のあるフォルダを指定する。
+3. `Steam\config\steamvr.vrsettings` を、導入前の状態に戻す。導入時に新しく追加した項目は削除し、既存の値を書き換えた項目は控えておいた元の値に戻す。対象は次のとおり。
+   - `steamvr.forcedDriver` と `steamvr.activateMultipleDrivers`（登録手順で書いたもの）
+   - `dashboard.enableDashboard`（以前の版を使っていた場合に `false` が書かれている。元の値が分からず、ダッシュボードを使いたい場合は削除するか `true` にする）
+   - `DismissedWarnings.DismissableWarning_DisplayInExtendedMode`（通知を消す手順を実行した場合）
+   - `driver_mousehmd` のセクション（設定を上書きしていた場合）
+4. 不要なら、ビルドした DLL（`driver\mousehmd\bin`）と、ツールの出力（`dashboardwatch.log`）を削除する。
+
+SteamVR を起動し直して、通常の HMD が選ばれ、ダッシュボードが意図した状態になっていることを確認する。
 
 ## ライセンス
 
