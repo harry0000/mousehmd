@@ -42,6 +42,8 @@ struct MouseHmdDisplayConfig {
 bool mousehmd_input_start(const MouseHmdConfig *cfg);
 void mousehmd_input_stop();
 void mousehmd_get_rotation(double *outWxyz);
+// Whether the key standing in for the controller system button is held.
+bool mousehmd_system_button();
 // Clamps every field to a range that is safe to hand to SteamVR.
 void mousehmd_sanitize_display(MouseHmdDisplayConfig *display);
 }
@@ -139,6 +141,18 @@ public:
         } else {
             m_proximity = k_ulInvalidInputComponentHandle;
             Log("mousehmd: could not create /proximity component\n");
+        }
+
+        // SteamVR reserves /input/system/click for summoning and dismissing the
+        // dashboard. With no controller this is the only way to close a dashboard
+        // that opened. Creating the component is not enough on a headset: SteamVR's
+        // stock dashboard bindings for a generic HMD do not listen to it, so the
+        // input profile ships a binding that maps it to ToggleDashboard.
+        VRProperties()->SetStringProperty(props, Prop_ControllerType_String, "mousehmd_hmd");
+        VRProperties()->SetStringProperty(props, Prop_InputProfilePath_String, "{mousehmd}/input/mousehmd_profile.json");
+        if (VRDriverInput()->CreateBooleanComponent(props, "/input/system/click", &m_systemButton) != VRInputError_None) {
+            m_systemButton = k_ulInvalidInputComponentHandle;
+            Log("mousehmd: could not create /input/system/click component\n");
         }
 
         // std::thread throws if the OS cannot start the thread. Nothing may be
@@ -258,10 +272,18 @@ private:
 
     void PoseLoop() {
         uint32_t tick = 0;
+        bool systemHeld = false;
         while (m_running) {
             uint32_t index = m_deviceIndex;
             if (index != k_unTrackedDeviceIndexInvalid) {
                 VRServerDriverHost()->TrackedDevicePoseUpdated(index, MakePose(), sizeof(DriverPose_t));
+                // Forward the system button on every change of state.
+                bool held = mousehmd_system_button();
+                if (held != systemHeld && m_systemButton != k_ulInvalidInputComponentHandle) {
+                    systemHeld = held;
+                    EVRInputError err = VRDriverInput()->UpdateBooleanComponent(m_systemButton, held, 0.0);
+                    Log("mousehmd: system button %s (error %d)\n", held ? "down" : "up", (int)err);
+                }
                 // Refresh "worn" about once a second so it never goes stale.
                 if (++tick % 500 == 0 && m_proximity != k_ulInvalidInputComponentHandle) {
                     VRDriverInput()->UpdateBooleanComponent(m_proximity, true, 0.0);
@@ -275,6 +297,7 @@ private:
     std::atomic<bool> m_running{false};
     std::thread m_poseThread;
     VRInputComponentHandle_t m_proximity = k_ulInvalidInputComponentHandle;
+    VRInputComponentHandle_t m_systemButton = k_ulInvalidInputComponentHandle;
 
     int32_t m_windowX = 100;
     int32_t m_windowY = 100;
@@ -306,12 +329,6 @@ public:
             // never be turned, so refuse to load instead.
             Log("mousehmd: could not start the input thread\n");
             return VRInitError_Driver_Failed;
-        }
-
-        // Without a controller there is no system button, so an open dashboard can
-        // never be dismissed and stays drawn over the picture.
-        if (SettingBool("disableDashboard", true)) {
-            VRSettings()->SetBool(k_pch_Dashboard_Section, k_pch_Dashboard_EnableDashboard_Bool, false);
         }
 
         m_hmd.LoadSettings();

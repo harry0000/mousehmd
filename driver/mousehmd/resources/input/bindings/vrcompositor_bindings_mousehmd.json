@@ -1,0 +1,35 @@
+{
+	"action_manifest_version": 0,
+	"alias_info": {},
+	"app_key": "openvr.component.vrcompositor",
+	"bindings": {
+		"/actions/lasermouse": {
+			"poses": [
+				{
+					"output": "/actions/lasermouse/in/pointer",
+					"path": "/user/head/pose/raw"
+				}
+			],
+			"sources": []
+		},
+		"/actions/system": {
+			"sources": [
+				{
+					"inputs": {
+						"click": {
+							"output": "/actions/system/in/ToggleDashboard"
+						}
+					},
+					"mode": "button",
+					"path": "/user/head/input/system"
+				}
+			]
+		}
+	},
+	"category": "steamvr_input",
+	"controller_type": "mousehmd_hmd",
+	"description": "",
+	"name": "SteamVR Dashboard bindings for mousehmd",
+	"options": {},
+	"simulated_actions": []
+}

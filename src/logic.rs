@@ -89,6 +89,33 @@ pub fn is_target_executable(process_path: &str, targets: &[&str]) -> bool {
         .any(|target| file_name.eq_ignore_ascii_case(target))
 }
 
+/// How much of the input the window in the foreground should receive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputScope {
+    /// Not one of ours: ignore everything.
+    None,
+    /// One of SteamVR's own windows. They have keyboard shortcuts of their own
+    /// (M toggles the legacy mirror, for one), so only the mouse counts here.
+    MouseOnly,
+    /// The VR app: mouse and keys.
+    MouseAndKeys,
+}
+
+/// Decides the scope from the foreground window's executable path.
+pub fn input_scope(
+    process_path: &str,
+    app_targets: &[&str],
+    steamvr_targets: &[&str],
+) -> InputScope {
+    if is_target_executable(process_path, app_targets) {
+        InputScope::MouseAndKeys
+    } else if is_target_executable(process_path, steamvr_targets) {
+        InputScope::MouseOnly
+    } else {
+        InputScope::None
+    }
+}
+
 /// Which keys are down right now.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Keys {
@@ -97,6 +124,8 @@ pub struct Keys {
     pub look_left: bool,
     pub look_right: bool,
     pub recenter: bool,
+    /// The key standing in for a controller's system button.
+    pub system: bool,
     /// Ctrl, Alt, Shift or the Windows key.
     pub modifier: bool,
 }
@@ -123,6 +152,12 @@ pub fn key_look(keys: Keys) -> KeyLook {
         pitch_direction: axis(keys.look_up, keys.look_down),
         recenter: keys.recenter,
     }
+}
+
+/// Whether the stand-in system button counts as held. Like the look keys, it
+/// only counts when pressed on its own.
+pub fn system_button(keys: Keys) -> bool {
+    keys.system && !keys.modifier
 }
 
 /// Head rotation as a quaternion `[w, x, y, z]` in OpenVR's coordinate system
@@ -174,6 +209,27 @@ mod tests {
         assert!(!is_target_executable("", TARGETS));
     }
 
+    #[test]
+    fn scope_gives_keys_to_the_app_and_only_the_mouse_to_steamvr() {
+        let app = &["dmmvrplayer_windows.exe"];
+        let steamvr = &["vrcompositor.exe", "vrmonitor.exe"];
+        let scope = |path| input_scope(path, app, steamvr);
+        assert_eq!(
+            scope(r"C:\Apps\DMMVRPlayer_Windows.exe"),
+            InputScope::MouseAndKeys
+        );
+        assert_eq!(
+            scope(r"C:\SteamVR\bin\win64\vrcompositor.exe"),
+            InputScope::MouseOnly
+        );
+        assert_eq!(
+            scope(r"C:\SteamVR\bin\win64\vrmonitor.exe"),
+            InputScope::MouseOnly
+        );
+        assert_eq!(scope(r"C:\Windows\notepad.exe"), InputScope::None);
+        assert_eq!(scope(r"C:\vrcompositor.exe\notepad.exe"), InputScope::None);
+    }
+
     fn keys(set: impl Fn(&mut Keys)) -> Keys {
         let mut k = Keys::default();
         set(&mut k);
@@ -211,6 +267,19 @@ mod tests {
             k.modifier = true;
         });
         assert_eq!(key_look(alt_i), KeyLook::default());
+    }
+
+    #[test]
+    fn system_button_needs_the_key_alone() {
+        assert!(system_button(keys(|k| k.system = true)));
+        assert!(!system_button(Keys::default()));
+        let ctrl_m = keys(|k| {
+            k.system = true;
+            k.modifier = true;
+        });
+        assert!(!system_button(ctrl_m));
+        // It is not a look key.
+        assert_eq!(key_look(keys(|k| k.system = true)), KeyLook::default());
     }
 
     fn display(width: i32, height: i32, scale: f32) -> DisplayConfig {

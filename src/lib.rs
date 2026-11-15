@@ -76,6 +76,12 @@ mod ffi {
         unsafe { std::ptr::copy_nonoverlapping(q.as_ptr(), out_wxyz, 4) };
     }
 
+    /// Whether the key standing in for the controller system button is held.
+    #[no_mangle]
+    pub extern "C" fn mousehmd_system_button() -> bool {
+        input::system_button()
+    }
+
     /// Clamps the display settings in place to values that are safe to hand to SteamVR.
     ///
     /// # Safety

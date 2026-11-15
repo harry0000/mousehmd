@@ -8,7 +8,7 @@
 - `src/` — Rust。入力のポーリングと向き（yaw / pitch）の管理（`input.rs`）、判定と設定値の検証（`logic.rs`）、DLL のエントリポイント（`lib.rs`）
 - `cpp/shim.cpp` — OpenVR のドライバインターフェース（C++ の抽象クラス）の実装
 - `cpp/openvr_driver.h` — Valve の OpenVR SDK ヘッダ（BSD-3-Clause、`cpp/OPENVR_LICENSE.txt`）
-- `driver/mousehmd/` — SteamVR に登録するドライバフォルダ
+- `driver/mousehmd/` — SteamVR に登録するドライバフォルダ。`resources/input/` に、仮想 HMD の入力プロファイルと、システムボタンをダッシュボードの開閉に結び付ける割り当てを置いている
 
 ## ビルド
 
@@ -27,9 +27,15 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 1. `%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` に `driver\mousehmd` の絶対パスを追加
 2. `Steam\config\steamvr.vrsettings` の `steamvr.forcedDriver` を `"mousehmd"` にする
 
+### 以前の版から更新する場合
+
+以前の版は、既定でダッシュボードを無効にしていた（起動時に `steamvr.vrsettings` の `dashboard.enableDashboard` を `false` に書き換えていた）。
+今の版は SteamVR のこの設定に触らないが、すでに書き込まれた値は更新しても自動では戻らない。ダッシュボードを使う（M で開閉する）場合は、SteamVR を終了した状態で `dashboard.enableDashboard` を削除するか `true` にする。
+意図して無効にしている場合は、そのままでよい。
+
 ## 操作
 
-対象ウィンドウ（VR アプリ、または SteamVR の表示ウィンドウ）が前面にあるときだけ反応する。
+対象ウィンドウが前面にあるときだけ反応する。マウスは VR アプリと SteamVR のウィンドウの両方で、キーは VR アプリのウィンドウだけで効く。
 
 | 操作 | 動作 |
 |---|---|
@@ -37,11 +43,17 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 | 中ボタン | 正面に戻す |
 | I / K / J / L | 上 / 下 / 左 / 右を見る |
 | H | 正面に戻す |
+| M | SteamVR のダッシュボードを開く / 閉じる |
 
-対象は実行ファイル名で判定する（大文字小文字は区別しない）。一覧は `src/input.rs` の `TARGET_PROCESSES`。
+対象は実行ファイル名で判定する（大文字小文字は区別しない）。一覧は `src/input.rs` の `APP_PROCESSES`（VR アプリ）と `STEAMVR_PROCESSES`（SteamVR のウィンドウ）。
+SteamVR のウィンドウでキーを無視するのは、SteamVR 自身がキー操作を持っているため（表示ウィンドウで M を押すと Legacy Mirror が開く、など）。
+
+M はコントローラのシステムボタンの代わりで、SteamVR が予約している入力 `/input/system/click` として送る。
+コントローラがないと、開いたダッシュボードを閉じる手段がほかにない。
+入力を送るだけでは効かず、同梱の割り当て（`resources/input/bindings/vrcompositor_bindings_mousehmd.json`）がこの入力を `ToggleDashboard` に結び付けている。
 
 キーは前面のアプリにもそのまま届く。Ctrl・Alt・Shift・Space・Enter・矢印キー・WASD は Unity の既定の入力割り当てなので避けている。
-Ctrl・Alt・Shift・Windows キーを押している間は、I / K / J / L / H を無視する（`Ctrl+H` などはアプリ側のショートカットとみなす）。マウス操作には影響しない。
+Ctrl・Alt・Shift・Windows キーを押している間は、I / K / J / L / H / M を無視する（`Ctrl+H` などはアプリ側のショートカットとみなす）。マウス操作には影響しない。
 
 ## 設定
 
@@ -62,7 +74,6 @@ Ctrl・Alt・Shift・Windows キーを押している間は、I / K / J / L / H 
 | `grabStyle` | true | true で映像をつかんで動かす向き、false で FPS と同じ向き |
 | `anyWindow` | false | true でどのウィンドウが前面でも反応する |
 | `headHeightMeters` | 0 | 頭の高さ |
-| `disableDashboard` | true | SteamVR のダッシュボードを無効にする（`dashboard.enableDashboard` を false に書き換える）。コントローラがないと閉じられないため |
 
 ## 起動時の「ヘッドセット通知」を消す
 

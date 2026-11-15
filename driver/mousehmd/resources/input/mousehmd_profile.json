@@ -1,0 +1,19 @@
+{
+	"jsonid": "input_profile",
+	"controller_type": "mousehmd_hmd",
+	"input_bindingui_mode": "hmd",
+	"input_source": {
+		"/input/system": {
+			"type": "button"
+		},
+		"/pose/raw": {
+			"type": "pose"
+		}
+	},
+	"default_bindings": [
+		{
+			"app_key": "openvr.component.vrcompositor",
+			"binding_url": "bindings/vrcompositor_bindings_mousehmd.json"
+		}
+	]
+}
