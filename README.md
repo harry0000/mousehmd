@@ -20,7 +20,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 `driver\mousehmd\bin\win64\driver_mousehmd.dll` ができる。
 
-テストは `cargo test` で実行する。
+テストは `cargo test` で実行する（`tools\dashboardwatch` は、そのフォルダで別に実行する）。
 
 ## SteamVR への登録
 
@@ -96,6 +96,15 @@ vrmonitor://ignoredismissablewarning/DisplayInExtendedMode
 
 止まるのは表示だけで、SteamVR は引き続き同じ状態を検出している。
 実機の HMD をつないだときにも同じ警告が出なくなるので、戻したいときはこの項目を削除する。
+
+## 確認ツール
+
+`tools/dashboardwatch` は、SteamVR のダッシュボードが表示中かどうかを SteamVR に問い合わせ、変化した時刻を `dashboardwatch.log` に 1 行ずつ書き出す（既定で 60 秒間）。キー操作でダッシュボードが開閉したかを、画面を見ずに確かめるためのもの。
+
+```powershell
+cd tools\dashboardwatch
+cargo run --release
+```
 
 ## ライセンス
 

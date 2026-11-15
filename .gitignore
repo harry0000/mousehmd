@@ -1,2 +1,4 @@
 /target
 /driver/mousehmd/bin/
+/tools/dashboardwatch/target
+dashboardwatch.log
