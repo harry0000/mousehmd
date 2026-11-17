@@ -89,16 +89,19 @@ pub fn is_target_executable(process_path: &str, targets: &[&str]) -> bool {
         .any(|target| file_name.eq_ignore_ascii_case(target))
 }
 
-/// How much of the input the window in the foreground should receive.
+/// Which window is in the foreground, as far as the input is concerned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputScope {
     /// Not one of ours: ignore everything.
     None,
     /// One of SteamVR's own windows. They have keyboard shortcuts of their own
-    /// (M toggles the legacy mirror, for one), so only the mouse counts here.
-    MouseOnly,
-    /// The VR app: mouse and keys.
-    MouseAndKeys,
+    /// (M toggles the legacy mirror, for one), so the mouse counts here but of
+    /// the keys only the SteamVR system key does.
+    SteamVr,
+    /// The VR app: mouse, look keys and the app's system key.
+    App,
+    /// `anyWindow` is set: everything counts, whatever is in the foreground.
+    Anywhere,
 }
 
 /// Decides the scope from the foreground window's executable path.
@@ -108,12 +111,22 @@ pub fn input_scope(
     steamvr_targets: &[&str],
 ) -> InputScope {
     if is_target_executable(process_path, app_targets) {
-        InputScope::MouseAndKeys
+        InputScope::App
     } else if is_target_executable(process_path, steamvr_targets) {
-        InputScope::MouseOnly
+        InputScope::SteamVr
     } else {
         InputScope::None
     }
+}
+
+/// Whether the mouse moves the view in this scope.
+pub fn takes_mouse(scope: InputScope) -> bool {
+    scope != InputScope::None
+}
+
+/// Whether the look keys move the view in this scope.
+pub fn takes_look_keys(scope: InputScope) -> bool {
+    matches!(scope, InputScope::App | InputScope::Anywhere)
 }
 
 /// Which keys are down right now.
@@ -124,8 +137,10 @@ pub struct Keys {
     pub look_left: bool,
     pub look_right: bool,
     pub recenter: bool,
-    /// The key standing in for a controller's system button.
+    /// The key standing in for a controller's system button in the VR app (M).
     pub system: bool,
+    /// The same, in SteamVR's own windows (F9), where M toggles the legacy mirror.
+    pub system_steamvr: bool,
     /// Ctrl, Alt, Shift or the Windows key.
     pub modifier: bool,
 }
@@ -154,10 +169,74 @@ pub fn key_look(keys: Keys) -> KeyLook {
     }
 }
 
-/// Whether the stand-in system button counts as held. Like the look keys, it
-/// only counts when pressed on its own.
-pub fn system_button(keys: Keys) -> bool {
-    keys.system && !keys.modifier
+/// The keys that stand in for the system button.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SystemKey {
+    /// M, in the VR app.
+    App,
+    /// F9, in SteamVR's own windows.
+    SteamVr,
+}
+
+impl SystemKey {
+    const ALL: [SystemKey; 2] = [SystemKey::App, SystemKey::SteamVr];
+
+    fn is_down(self, keys: Keys) -> bool {
+        match self {
+            SystemKey::App => keys.system,
+            SystemKey::SteamVr => keys.system_steamvr,
+        }
+    }
+
+    /// Each kind of window has its own key, and with `anyWindow` either counts.
+    fn counts_in(self, scope: InputScope) -> bool {
+        matches!(
+            (scope, self),
+            (InputScope::App, SystemKey::App)
+                | (InputScope::SteamVr, SystemKey::SteamVr)
+                | (InputScope::Anywhere, _)
+        )
+    }
+}
+
+/// Turns the system keys into the stand-in system button.
+///
+/// SteamVR toggles the dashboard each time the button goes down, so the button
+/// may only go down when a key is pressed afresh: in a window where it counts,
+/// with no modifier held, after the key was seen up on the previous tick. A key
+/// that is already down never presses the button, whether a modifier was just
+/// let go (Ctrl+F9 with Ctrl released first) or the key was held while moving
+/// in from another window. Keys are not watched outside our windows, so after
+/// the foreground has been elsewhere a key must first be seen up.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SystemButton {
+    /// Whether each key was down on the last tick it was watched; `None` when
+    /// it was not watched (at start, or while another window was in front).
+    last_down: [Option<bool>; 2],
+    /// The key holding the button down.
+    held_by: Option<SystemKey>,
+}
+
+impl SystemButton {
+    /// Advances one tick and returns whether the button is held.
+    pub fn update(&mut self, scope: InputScope, keys: Keys) -> bool {
+        // The button stays down while its key does, in a window where it counts.
+        if let Some(key) = self.held_by {
+            if !(key.counts_in(scope) && key.is_down(keys)) {
+                self.held_by = None;
+            }
+        }
+        if self.held_by.is_none() && !keys.modifier {
+            self.held_by = SystemKey::ALL.into_iter().enumerate().find_map(|(i, key)| {
+                let fresh = key.is_down(keys) && self.last_down[i] == Some(false);
+                (fresh && key.counts_in(scope)).then_some(key)
+            });
+        }
+        for (i, key) in SystemKey::ALL.into_iter().enumerate() {
+            self.last_down[i] = (scope != InputScope::None).then(|| key.is_down(keys));
+        }
+        self.held_by.is_some()
+    }
 }
 
 /// Head rotation as a quaternion `[w, x, y, z]` in OpenVR's coordinate system
@@ -210,24 +289,30 @@ mod tests {
     }
 
     #[test]
-    fn scope_gives_keys_to_the_app_and_only_the_mouse_to_steamvr() {
+    fn scope_tells_the_app_from_steamvr_and_from_other_windows() {
         let app = &["dmmvrplayer_windows.exe"];
         let steamvr = &["vrcompositor.exe", "vrmonitor.exe"];
         let scope = |path| input_scope(path, app, steamvr);
-        assert_eq!(
-            scope(r"C:\Apps\DMMVRPlayer_Windows.exe"),
-            InputScope::MouseAndKeys
-        );
+        assert_eq!(scope(r"C:\Apps\DMMVRPlayer_Windows.exe"), InputScope::App);
         assert_eq!(
             scope(r"C:\SteamVR\bin\win64\vrcompositor.exe"),
-            InputScope::MouseOnly
+            InputScope::SteamVr
         );
         assert_eq!(
             scope(r"C:\SteamVR\bin\win64\vrmonitor.exe"),
-            InputScope::MouseOnly
+            InputScope::SteamVr
         );
         assert_eq!(scope(r"C:\Windows\notepad.exe"), InputScope::None);
         assert_eq!(scope(r"C:\vrcompositor.exe\notepad.exe"), InputScope::None);
+    }
+
+    #[test]
+    fn mouse_counts_in_every_scope_but_none_and_look_keys_skip_steamvr() {
+        use InputScope::*;
+        assert!(!takes_mouse(None));
+        assert!(takes_mouse(SteamVr) && takes_mouse(App) && takes_mouse(Anywhere));
+        assert!(!takes_look_keys(None) && !takes_look_keys(SteamVr));
+        assert!(takes_look_keys(App) && takes_look_keys(Anywhere));
     }
 
     fn keys(set: impl Fn(&mut Keys)) -> Keys {
@@ -269,17 +354,139 @@ mod tests {
         assert_eq!(key_look(alt_i), KeyLook::default());
     }
 
+    const M: Keys = Keys {
+        look_up: false,
+        look_down: false,
+        look_left: false,
+        look_right: false,
+        recenter: false,
+        system: true,
+        system_steamvr: false,
+        modifier: false,
+    };
+    const F9: Keys = Keys {
+        system: false,
+        system_steamvr: true,
+        ..M
+    };
+    const NONE: Keys = Keys { system: false, ..M };
+
+    fn with_modifier(k: Keys) -> Keys {
+        Keys {
+            modifier: true,
+            ..k
+        }
+    }
+
+    /// Feeds one tick per step and returns the button state after each.
+    fn run_button(steps: &[(InputScope, Keys)]) -> Vec<bool> {
+        let mut button = SystemButton::default();
+        steps
+            .iter()
+            .map(|&(scope, keys)| button.update(scope, keys))
+            .collect()
+    }
+
+    #[test]
+    fn system_button_key_depends_on_the_window() {
+        use InputScope::*;
+        // M in the VR app, F9 in SteamVR's windows, either with anyWindow.
+        for (scope, key, counts) in [
+            (App, M, true),
+            (App, F9, false),
+            (SteamVr, F9, true),
+            (SteamVr, M, false),
+            (Anywhere, M, true),
+            (Anywhere, F9, true),
+            (None, M, false),
+            (None, F9, false),
+        ] {
+            let held = run_button(&[(scope, NONE), (scope, key)]);
+            assert_eq!(held, [false, counts], "{scope:?} {key:?}");
+        }
+    }
+
+    #[test]
+    fn system_button_follows_a_fresh_press_until_release() {
+        use InputScope::*;
+        assert_eq!(
+            run_button(&[
+                (SteamVr, NONE),
+                (SteamVr, F9),
+                (SteamVr, F9),
+                (SteamVr, NONE),
+                (SteamVr, F9),
+            ]),
+            [false, true, true, false, true]
+        );
+        // Leaving the window releases the button even with the key still down.
+        assert_eq!(
+            run_button(&[(App, NONE), (App, M), (None, M), (App, M)]),
+            [false, true, false, false]
+        );
+    }
+
     #[test]
     fn system_button_needs_the_key_alone() {
-        assert!(system_button(keys(|k| k.system = true)));
-        assert!(!system_button(Keys::default()));
-        let ctrl_m = keys(|k| {
-            k.system = true;
-            k.modifier = true;
-        });
-        assert!(!system_button(ctrl_m));
-        // It is not a look key.
+        use InputScope::*;
+        for scope in [SteamVr, App, Anywhere] {
+            for key in [M, F9] {
+                let held = run_button(&[(scope, NONE), (scope, with_modifier(key))]);
+                assert_eq!(held, [false, false], "{scope:?} {key:?}");
+            }
+        }
+        // A modifier pressed after the key does not release the button.
+        assert_eq!(
+            run_button(&[(App, NONE), (App, M), (App, with_modifier(M))]),
+            [false, true, true]
+        );
+    }
+
+    #[test]
+    fn letting_go_of_the_modifier_first_does_not_press_the_button() {
+        use InputScope::*;
+        // Ctrl+F9, then Ctrl released while F9 is still down.
+        assert_eq!(
+            run_button(&[
+                (SteamVr, NONE),
+                (SteamVr, with_modifier(F9)),
+                (SteamVr, F9),
+                (SteamVr, NONE),
+            ]),
+            [false, false, false, false]
+        );
+    }
+
+    #[test]
+    fn a_key_held_while_moving_in_does_not_press_the_button() {
+        use InputScope::*;
+        // F9 held down in another window, then SteamVR's window comes to the front.
+        assert_eq!(
+            run_button(&[
+                (None, NONE),
+                (None, F9),
+                (SteamVr, F9),
+                (SteamVr, NONE),
+                (SteamVr, F9)
+            ]),
+            [false, false, false, false, true]
+        );
+        // F9 held in the VR app, where it does not count, then SteamVR in front.
+        assert_eq!(
+            run_button(&[(App, NONE), (App, F9), (SteamVr, F9)]),
+            [false, false, false]
+        );
+        // A key already down when the driver starts.
+        assert_eq!(run_button(&[(App, M), (App, M)]), [false, false]);
+    }
+
+    #[test]
+    fn system_keys_are_not_look_keys() {
         assert_eq!(key_look(keys(|k| k.system = true)), KeyLook::default());
+        assert_eq!(
+            key_look(keys(|k| k.system_steamvr = true)),
+            KeyLook::default()
+        );
     }
 
     fn display(width: i32, height: i32, scale: f32) -> DisplayConfig {

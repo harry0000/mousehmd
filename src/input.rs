@@ -4,20 +4,22 @@
 //! input is read with `GetAsyncKeyState` / `GetCursorPos` rather than window
 //! messages. To avoid hijacking the mouse everywhere, input only counts while
 //! one of the VR windows is in the foreground (unless `any_window` is set). The
-//! keys count only in the VR app's window; SteamVR's own windows take the mouse only.
+//! look keys count only in the VR app's window. SteamVR's own windows take the
+//! mouse and F9 only: they have keyboard shortcuts of their own (M toggles the
+//! legacy mirror there), so they get a system key that SteamVR leaves alone.
 //!
 //! Controls:
 //!   right mouse button + drag   look around
 //!   middle mouse button         recenter
 //!   I / K / J / L               look up / down / left / right
 //!   H                           recenter
-//!   M                           system button (opens / closes the SteamVR dashboard)
+//!   M (VR app) / F9 (SteamVR)   system button (opens / closes the SteamVR dashboard)
 //!
 //! The keys deliberately avoid Ctrl, Alt, Shift, Space, Enter, the arrow keys and
 //! WASD: those are Unity's default input bindings (Fire1-3, Jump, Submit and the
 //! movement axes), and the app in the foreground receives every key we read.
-//! For the same reason the look keys are ignored while a modifier is held, so
-//! that the app's own shortcuts (Ctrl+H, Alt+I, ...) do not also move the view.
+//! For the same reason the keys are ignored while a modifier is held, so that
+//! the app's own shortcuts (Ctrl+H, Alt+I, ...) do not also move the view.
 
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -31,8 +33,8 @@ use windows_sys::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CONTROL, VK_H, VK_I, VK_J, VK_K, VK_L, VK_LWIN, VK_M, VK_MBUTTON, VK_MENU,
-    VK_RBUTTON, VK_RWIN, VK_SHIFT,
+    GetAsyncKeyState, VK_CONTROL, VK_F9, VK_H, VK_I, VK_J, VK_K, VK_L, VK_LWIN, VK_M, VK_MBUTTON,
+    VK_MENU, VK_RBUTTON, VK_RWIN, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetForegroundWindow, GetWindowThreadProcessId,
@@ -40,11 +42,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use crate::logic::{self, Config, InputScope, Keys};
 
-/// The VR app. Its window takes both the mouse and the keys.
+/// The VR app. Its window takes the mouse and all of the keys.
 /// Matched by executable file name (ASCII case-insensitive).
 const APP_PROCESSES: &[&str] = &["dmmvrplayer_windows.exe"];
-/// SteamVR's own windows. Only the mouse counts there: they have keyboard
-/// shortcuts of their own, which our keys would trigger as well.
+/// SteamVR's own windows. They take the mouse and F9 only: they have keyboard
+/// shortcuts of their own, which our other keys would trigger as well.
 const STEAMVR_PROCESSES: &[&str] = &["vrcompositor.exe", "vrserver.exe", "vrmonitor.exe"];
 
 const POLL_INTERVAL: Duration = Duration::from_millis(2);
@@ -131,6 +133,7 @@ fn read_keys() -> Keys {
         look_right: key_down(VK_L),
         recenter: key_down(VK_H),
         system: key_down(VK_M),
+        system_steamvr: key_down(VK_F9),
         modifier: [VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN]
             .into_iter()
             .any(key_down),
@@ -160,7 +163,7 @@ impl ForegroundFilter {
 
     fn scope(&mut self) -> InputScope {
         if self.any_window {
-            return InputScope::MouseAndKeys;
+            return InputScope::Anywhere;
         }
         let hwnd = unsafe { GetForegroundWindow() };
         if hwnd.is_null() {
@@ -219,6 +222,7 @@ fn run(cfg: Config) {
     let mut yaw = 0.0f64;
     let mut pitch = 0.0f64;
     let mut drag_origin: Option<(i32, i32)> = None;
+    let mut system_button = logic::SystemButton::default();
     let mut last_tick = Instant::now();
 
     while RUNNING.load(Ordering::Relaxed) {
@@ -231,7 +235,7 @@ fn run(cfg: Config) {
         let scope = filter.scope();
 
         // Mouse: in the VR app and in SteamVR's own windows.
-        if scope == InputScope::None {
+        if !logic::takes_mouse(scope) {
             drag_origin = None;
         } else {
             if key_down(VK_RBUTTON) {
@@ -249,19 +253,25 @@ fn run(cfg: Config) {
             recenter |= key_down(VK_MBUTTON);
         }
 
-        // Keys: in the VR app only.
-        if scope == InputScope::MouseAndKeys {
-            let keys = read_keys();
+        let keys = if scope == InputScope::None {
+            Keys::default()
+        } else {
+            read_keys()
+        };
+
+        // Look keys: in the VR app only.
+        if logic::takes_look_keys(scope) {
             let look = logic::key_look(keys);
             let step = key_speed * dt;
             target_yaw += look.yaw_direction * step;
             target_pitch += look.pitch_direction * step;
             recenter |= look.recenter;
-            SYSTEM_BUTTON.store(logic::system_button(keys), Ordering::Relaxed);
-        } else {
-            // Leaving the app's window releases the button, so it can never stay stuck down.
-            SYSTEM_BUTTON.store(false, Ordering::Relaxed);
         }
+
+        // System button: M in the VR app, F9 in SteamVR's windows. It goes down
+        // only on a fresh press, and a change of window releases it, so it can
+        // never stay stuck down.
+        SYSTEM_BUTTON.store(system_button.update(scope, keys), Ordering::Relaxed);
 
         if recenter {
             // Fold accumulated turns away so the view returns by the short way round.
