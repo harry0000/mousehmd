@@ -21,6 +21,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 `driver\mousehmd\bin\win64\driver_mousehmd.dll` ができる。
 
 テストは `cargo test` で実行する（`tools\dashboardwatch` は、そのフォルダで別に実行する）。
+GitHub Actions（`.github/workflows/test.yml`）は、`main` への push と pull request のたびに、この 2 つのフォルダで `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test` を Windows 上で実行する。
 
 ## SteamVR への登録
 

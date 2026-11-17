@@ -1,0 +1,12 @@
+name: 'setup'
+description: 'setup the Rust toolchain'
+runs:
+  using: 'composite'
+  steps:
+    # rustup is preinstalled on the runner, so no third-party action is needed.
+    # Pinned to the toolchain the code is built and checked with locally.
+    - name: Setup
+      run: |
+        rustup toolchain install 1.89.0 --profile minimal --component clippy,rustfmt
+        rustup default 1.89.0
+      shell: bash
