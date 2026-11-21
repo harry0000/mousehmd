@@ -76,8 +76,7 @@ Values out of range or not valid numbers are clamped to a safe range or replaced
 
 | Key | Default | Meaning |
 |---|---|---|
-| `windowX` / `windowY` | 100 | Position of the display window |
-| `windowWidth` / `windowHeight` | 1600 / 900 | Size of the display window |
+| `windowWidth` / `windowHeight` | The largest 16:9 size within half of the primary monitor in each direction (1920×1080 on 4K; at least 960×540 where that fits, and never beyond the area outside the taskbar) | Size of the display window (in physical pixels). If only one is set, the other follows at 16:9. SteamVR centres the display window on the primary monitor, and the size stays until SteamVR restarts |
 | `monoView` | true | true shows one eye over the whole window; false shows both eyes side by side |
 | `horizontalFovDeg` | 100 | Horizontal field of view (degrees) |
 | `renderScale` | 1.0 | Render resolution multiplier |

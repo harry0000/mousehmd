@@ -248,9 +248,218 @@ pub fn rotation_from_yaw_pitch(yaw_deg: f64, pitch_deg: f64) -> [f64; 4] {
     [cy * cp, cy * sp, sy * cp, -sy * sp]
 }
 
+/// A window rectangle in physical desktop pixels. Mirrors `MouseHmdWindowRect`
+/// in `cpp/shim.cpp`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WindowRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+/// The default size when neither the monitor nor the work area can be read.
+pub const FALLBACK_SIZE: (i32, i32) = (1280, 720);
+/// The default window is at least this wide (960x540) when that fits the
+/// work area, so that small screens do not get a tiny window.
+const MIN_DEFAULT_UNIT: i32 = 60;
+
+/// The headset window's size when it is not set: the largest 16:9 size
+/// within half of the whole primary monitor in each direction, which leaves
+/// room for the VR app's own window, the one mainly watched. Half of the whole
+/// monitor rather than of the work area, so that a 16:9 monitor gets exactly
+/// half (3840x2160 gives 1920x1080) whatever the taskbar takes. On a small or
+/// portrait screen half would be too small to read, so it grows to 960x540
+/// where that fits; it never grows past the work area.
+pub fn default_size(monitor: Option<WindowRect>, work: Option<WindowRect>) -> (i32, i32) {
+    let Some(base) = monitor.or(work) else {
+        return FALLBACK_SIZE;
+    };
+    let room = work.unwrap_or(base);
+    // 16:9 in whole units, so the ratio is exact. 8 units keeps both edges
+    // above MIN_DIMENSION even on a tiny screen.
+    let half = (base.width / 2 / 16).min(base.height / 2 / 9);
+    let fits = (room.width / 16).min(room.height / 9);
+    let unit = half.max(MIN_DEFAULT_UNIT.min(fits)).min(fits).max(8);
+    (16 * unit, 9 * unit)
+}
+
+/// The headset window's size from the settings, where 0 means not set. If
+/// only one edge is set, the other follows at 16:9 so the picture keeps its
+/// proportions; if neither is, `default` is used. The result is clamped like
+/// the other display settings.
+pub fn window_size(default: (i32, i32), width: i32, height: i32) -> (i32, i32) {
+    let (width, height) = match (width, height) {
+        (0, 0) => default,
+        (w, 0) => (w, (i64::from(w) * 9 / 16) as i32),
+        (0, h) => ((i64::from(h) * 16 / 9).min(i64::from(i32::MAX)) as i32, h),
+        (w, h) => (w, h),
+    };
+    (
+        width.clamp(MIN_DIMENSION, MAX_DIMENSION),
+        height.clamp(MIN_DIMENSION, MAX_DIMENSION),
+    )
+}
+
+/// The headset window: its size from the settings or the screen, and the
+/// position SteamVR gives it, which is the centre of the whole primary
+/// monitor (taskbar included), whatever position the driver reports.
+pub fn headset_window(
+    monitor: Option<WindowRect>,
+    work: Option<WindowRect>,
+    width: i32,
+    height: i32,
+) -> WindowRect {
+    let (width, height) = window_size(default_size(monitor, work), width, height);
+    let monitor = monitor.or(work).unwrap_or(WindowRect {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    });
+    WindowRect {
+        x: monitor.x + (monitor.width - width) / 2,
+        y: monitor.y + (monitor.height - height) / 2,
+        width,
+        height,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rect(x: i32, y: i32, width: i32, height: i32) -> WindowRect {
+        WindowRect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    /// `default_size` for a primary monitor of `width` x `height` with a
+    /// taskbar of `taskbar` pixels along the bottom.
+    fn default_for(width: i32, height: i32, taskbar: i32) -> (i32, i32) {
+        default_size(
+            Some(rect(0, 0, width, height)),
+            Some(rect(0, 0, width, height - taskbar)),
+        )
+    }
+
+    #[test]
+    fn default_size_is_half_the_whole_monitor_at_16_9() {
+        // 4K at 150%: the taskbar does not shrink the window below half.
+        assert_eq!(default_for(3840, 2160, 72), (1920, 1080));
+        assert_eq!(default_for(3840, 2160, 0), (1920, 1080));
+        // 1440p.
+        assert_eq!(default_for(2560, 1440, 48), (1280, 720));
+        // Surface Pro (3:2): the width decides.
+        assert_eq!(default_for(2736, 1824, 72), (1360, 765));
+    }
+
+    #[test]
+    fn default_size_on_ultrawide_monitors_follows_the_height() {
+        // 21:9 and 32:9: half the height decides, so the window does not
+        // take most of the screen's height.
+        assert_eq!(default_for(3440, 1440, 48), (1280, 720));
+        assert_eq!(default_for(5120, 1440, 48), (1280, 720));
+        // 2560x1080: half is 960x540 exactly.
+        assert_eq!(default_for(2560, 1080, 40), (960, 540));
+    }
+
+    #[test]
+    fn default_size_on_portrait_monitors_grows_to_960x540_within_the_width() {
+        // Half the width would be tiny (528x297 on 1080x1920), so 960x540.
+        assert_eq!(default_for(1080, 1920, 48), (960, 540));
+        assert_eq!(default_for(1440, 2560, 48), (960, 540));
+        // 4K portrait: half the width is already larger.
+        assert_eq!(default_for(2160, 3840, 72), (1072, 603));
+        // Too narrow for 960: as wide as the screen.
+        assert_eq!(default_for(768, 1366, 40), (768, 432));
+    }
+
+    #[test]
+    fn default_size_grows_to_960x540_on_small_screens_when_it_fits() {
+        assert_eq!(default_for(1920, 1080, 40), (960, 540));
+        assert_eq!(default_for(1366, 768, 40), (960, 540));
+        // 800x600: 960x540 does not fit, so as large as fits.
+        assert_eq!(default_for(800, 600, 40), (800, 450));
+    }
+
+    #[test]
+    fn default_size_never_grows_past_the_work_area() {
+        // A taskbar docked on the left that leaves 420 pixels of width.
+        let size = default_size(Some(rect(0, 0, 1920, 1080)), Some(rect(1500, 0, 420, 1080)));
+        assert_eq!(size, (416, 234));
+    }
+
+    #[test]
+    fn default_size_falls_back_and_never_goes_below_the_minimum() {
+        assert_eq!(default_size(None, None), FALLBACK_SIZE);
+        // Without the monitor, the work area stands in for it.
+        assert_eq!(
+            default_size(None, Some(rect(0, 0, 3840, 2160))),
+            (1920, 1080)
+        );
+        let (w, h) = default_size(Some(rect(0, 0, 0, 0)), None);
+        assert_eq!((w, h), (128, 72));
+        assert!(w >= MIN_DIMENSION && h >= MIN_DIMENSION);
+    }
+
+    #[test]
+    fn window_size_uses_the_settings_and_fills_in_a_missing_edge_at_16_9() {
+        assert_eq!(window_size((1856, 1044), 0, 0), (1856, 1044));
+        assert_eq!(window_size((1856, 1044), 1600, 900), (1600, 900));
+        assert_eq!(window_size((1856, 1044), 800, 600), (800, 600));
+        // Only one edge set.
+        assert_eq!(window_size((1856, 1044), 1280, 0), (1280, 720));
+        assert_eq!(window_size((1856, 1044), 0, 720), (1280, 720));
+        // Out of range values are clamped, even when derived.
+        assert_eq!(
+            window_size((1856, 1044), -5, 0),
+            (MIN_DIMENSION, MIN_DIMENSION)
+        );
+        assert_eq!(
+            window_size((1856, 1044), 0, i32::MAX),
+            (MAX_DIMENSION, MAX_DIMENSION)
+        );
+    }
+
+    #[test]
+    fn headset_window_is_centred_on_the_whole_monitor() {
+        // SteamVR centres on the whole monitor, taskbar included (a 1856x1044
+        // window on this 4K monitor was found at (992, 558)).
+        let monitor = Some(rect(0, 0, 3840, 2160));
+        let work = Some(rect(0, 0, 3840, 2088));
+        assert_eq!(
+            headset_window(monitor, work, 0, 0),
+            rect(960, 540, 1920, 1080)
+        );
+        assert_eq!(
+            headset_window(monitor, work, 1856, 1044),
+            rect(992, 558, 1856, 1044)
+        );
+        // An explicit size is centred the same way.
+        assert_eq!(
+            headset_window(monitor, work, 800, 600),
+            rect(1520, 780, 800, 600)
+        );
+        // A portrait monitor.
+        let portrait = Some(rect(0, 0, 1080, 1920));
+        assert_eq!(
+            headset_window(portrait, Some(rect(0, 0, 1080, 1872)), 0, 0),
+            rect(60, 690, 960, 540)
+        );
+        // Without the monitor the work area stands in; without either, the
+        // fallback size at the origin.
+        assert_eq!(
+            headset_window(None, Some(rect(0, 0, 1920, 1040)), 0, 0),
+            rect(480, 250, 960, 540)
+        );
+        assert_eq!(headset_window(None, None, 0, 0), rect(0, 0, 1280, 720));
+    }
 
     const TARGETS: &[&str] = &["dmmvrplayer_windows.exe", "vrcompositor.exe"];
 

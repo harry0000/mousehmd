@@ -38,6 +38,13 @@ struct MouseHmdDisplayConfig {
     float ipdMeters;
     float headHeightMeters;
 };
+// A window rectangle in physical desktop pixels.
+struct MouseHmdWindowRect {
+    int32_t x;
+    int32_t y;
+    int32_t width;
+    int32_t height;
+};
 // Returns false if the input thread could not be started.
 bool mousehmd_input_start(const MouseHmdConfig *cfg);
 void mousehmd_input_stop();
@@ -46,6 +53,11 @@ void mousehmd_get_rotation(double *outWxyz);
 bool mousehmd_system_button();
 // Clamps every field to a range that is safe to hand to SteamVR.
 void mousehmd_sanitize_display(MouseHmdDisplayConfig *display);
+// The headset window: its size from the windowWidth/windowHeight settings
+// (0 = not set) or the primary monitor, and the position SteamVR gives it.
+// Returns false if the screen could not be read; `out` then holds the
+// fallback size.
+bool mousehmd_headset_window(int32_t width, int32_t height, MouseHmdWindowRect *out);
 }
 
 // ---- helpers ----------------------------------------------------------------
@@ -88,13 +100,19 @@ static bool SettingBool(const char *key, bool fallback) {
 class MouseHmd : public ITrackedDeviceServerDriver, public IVRDisplayComponent {
 public:
     void LoadSettings() {
-        m_windowX = SettingInt("windowX", 100);
-        m_windowY = SettingInt("windowY", 100);
         m_monoView = SettingBool("monoView", true);
 
+        // Size and position are worked out in Rust (src/logic.rs): the size
+        // from the settings or the primary monitor, the position where SteamVR
+        // puts the window anyway. SteamVR keeps this size until it restarts.
+        MouseHmdWindowRect window = {};
+        if (!mousehmd_headset_window(SettingInt("windowWidth", 0), SettingInt("windowHeight", 0), &window)) {
+            Log("mousehmd: could not read the screen size; the default window size falls back to 1280x720\n");
+        }
+
         MouseHmdDisplayConfig display;
-        display.windowWidth = SettingInt("windowWidth", 1600);
-        display.windowHeight = SettingInt("windowHeight", 900);
+        display.windowWidth = window.width;
+        display.windowHeight = window.height;
         display.horizontalFovDeg = SettingFloat("horizontalFovDeg", 100.0f);
         display.renderScale = SettingFloat("renderScale", 1.0f);
         display.displayFrequency = SettingFloat("displayFrequency", 60.0f);
@@ -105,6 +123,10 @@ public:
         // conversions below, and the scaled render target size, cannot overflow.
         mousehmd_sanitize_display(&display);
 
+        // The size is already within range, so the position computed for it
+        // still holds after the checks above.
+        m_windowX = window.x;
+        m_windowY = window.y;
         m_windowWidth = (uint32_t)display.windowWidth;
         m_windowHeight = (uint32_t)display.windowHeight;
         m_horizontalFovDeg = display.horizontalFovDeg;
