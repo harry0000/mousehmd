@@ -1,6 +1,6 @@
 [package]
 name = "mousehmd"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "SteamVR virtual HMD driver whose orientation is driven by mouse/keyboard"
 license = "MIT"
