@@ -17,11 +17,14 @@ mod logic;
 mod input;
 
 #[cfg(windows)]
+mod window;
+
+#[cfg(windows)]
 mod ffi {
     use std::ffi::{c_char, c_int, c_void};
 
-    use crate::input;
-    use crate::logic::{Config, DisplayConfig};
+    use crate::logic::{self, Config, DisplayConfig, WindowRect};
+    use crate::{input, window};
 
     extern "C" {
         fn mousehmd_cpp_factory(
@@ -60,6 +63,29 @@ mod ffi {
     #[no_mangle]
     pub extern "C" fn mousehmd_input_stop() {
         input::stop();
+    }
+
+    /// Writes the headset window: its size from the `windowWidth` and
+    /// `windowHeight` settings (0 = not set) or from the primary monitor, and
+    /// the position SteamVR gives it. Returns false if neither the monitor nor
+    /// its work area could be read; `out` then holds the fallback size.
+    ///
+    /// # Safety
+    /// `out` must be null or point to a writable `MouseHmdWindowRect`.
+    #[no_mangle]
+    pub unsafe extern "C" fn mousehmd_headset_window(
+        width: i32,
+        height: i32,
+        out: *mut WindowRect,
+    ) -> bool {
+        // SAFETY: the caller guarantees `out` is null or valid for writes.
+        let Some(out) = (unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let monitor = window::primary_monitor();
+        let work = window::primary_work_area();
+        *out = logic::headset_window(monitor, work, width, height);
+        monitor.is_some() || work.is_some()
     }
 
     /// Writes the current head rotation as a quaternion `[w, x, y, z]`.

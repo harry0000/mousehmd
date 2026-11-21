@@ -1,9 +1,5 @@
 {
     "driver_mousehmd": {
-        "windowX": 100,
-        "windowY": 100,
-        "windowWidth": 1600,
-        "windowHeight": 900,
         "monoView": true,
         "horizontalFovDeg": 100.0,
         "renderScale": 1.0,
