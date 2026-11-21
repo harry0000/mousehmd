@@ -17,10 +17,10 @@ Copyright (c) 2015, Valve Corporation
 BSD-3-Clause. The full license text is in OPENVR_LICENSE.txt.
 
 
-2. windows-sys, windows-targets, windows_x86_64_msvc
------------------------------------------------------
+2. windows-sys, windows-link
+----------------------------
 
-windows-sys 0.59.0, windows-targets 0.52.6 and windows_x86_64_msvc 0.52.6.
+windows-sys 0.61.2 and windows-link 0.2.1.
 Licensed under MIT OR Apache-2.0; used here under the MIT License.
 
 MIT License

@@ -11,7 +11,7 @@ name = "driver_mousehmd"
 crate-type = ["cdylib"]
 
 [dependencies.windows-sys]
-version = "0.59"
+version = "0.61"
 features = [
     "Win32_Foundation",
     "Win32_Media",

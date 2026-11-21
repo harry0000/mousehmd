@@ -67,16 +67,21 @@ $bin = Join-Path $stage 'mousehmd\bin\win64'
 New-Item -ItemType Directory -Force $bin | Out-Null
 Copy-Item $dll (Join-Path $bin 'driver_mousehmd.dll')
 
-# The notices name the versions linked into the DLL. Refuse to ship them if
-# Cargo.lock or the toolchain has moved on without them.
+# The notices name every crate linked into the DLL, with its version. Refuse
+# to ship them if the dependencies or the toolchain have moved on without
+# them. The crates are those cargo links for the release target, not a fixed
+# list, so a crate that newly ends up in the DLL is caught too.
 $notices = Get-Content (Join-Path $stage 'THIRD_PARTY_LICENSES.txt') -Raw
-$lock = Get-Content (Join-Path $root 'Cargo.lock') -Raw
+$deps = & cargo tree --manifest-path (Join-Path $root 'Cargo.toml') --locked -e normal --prefix none --target x86_64-pc-windows-msvc
+if ($LASTEXITCODE -ne 0) { throw "cargo tree failed" }
 $expected = @()
-foreach ($crate in 'windows-sys', 'windows-targets', 'windows_x86_64_msvc') {
-    $match = [regex]::Match($lock, "(?m)^name = `"$([regex]::Escape($crate))`"\r?\nversion = `"([^`"]+)`"")
-    if (-not $match.Success) { throw "$crate not found in Cargo.lock" }
-    $expected += "$crate $($match.Groups[1].Value)"
+foreach ($line in $deps) {
+    # "name vX.Y.Z", "name vX.Y.Z (path)" for this crate, "... (*)" for repeats.
+    if ($line -notmatch '^(\S+) v(\S+)') { throw "unexpected cargo tree line: $line" }
+    if ($Matches[1] -eq 'mousehmd') { continue }
+    $expected += "$($Matches[1]) $($Matches[2])"
 }
+$expected = @($expected | Select-Object -Unique)
 $rustc = & rustc --version
 if ($LASTEXITCODE -ne 0 -or $rustc -notmatch '^rustc (\d+\.\d+\.\d+)') { throw "could not read the rustc version" }
 $rust = $Matches[1]
