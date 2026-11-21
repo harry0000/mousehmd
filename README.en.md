@@ -11,6 +11,25 @@ It lets you look around in VR apps without a headset.
 - `cpp/shim.cpp` — Implementation of the OpenVR driver interfaces (C++ abstract classes)
 - `cpp/openvr_driver.h` — Header from Valve's OpenVR SDK (BSD-3-Clause, `cpp/OPENVR_LICENSE.txt`)
 - `driver/mousehmd/` — The driver folder registered with SteamVR. `resources/input/` holds the virtual HMD's input profile and the binding that ties the system button to opening and closing the dashboard
+- `dist/` — The script that makes the release zip, and the notices of the third-party code in the DLL
+
+## Getting it
+
+Download `mousehmd-vX.Y.Z.zip` from [Releases](https://github.com/harry0000/mousehmd/releases) and extract it to a place where it will stay (for example `C:\Tools\mousehmd`).
+Keep the version out of the folder name and extract new versions to the same folder. Explorer's "Extract All" suggests a folder named after the zip (`mousehmd-vX.Y.Z`), so change the destination.
+Register the `mousehmd` folder inside it as described in "Registering with SteamVR" below. No build is needed.
+It needs 64-bit Windows 10 or later and SteamVR.
+
+To update, close SteamVR, delete the contents of the folder, and extract the new zip to the same folder. There is no need to register it again.
+If you extract it to a different folder, unregister the old folder before registering the new one. Otherwise SteamVR keeps loading the DLL from the old folder.
+
+You can check with the [GitHub CLI](https://cli.github.com/) that the zip was built by this repository's GitHub Actions.
+
+```powershell
+gh attestation verify mousehmd-vX.Y.Z.zip --repo harry0000/mousehmd
+```
+
+To build from source instead, register the `driver\mousehmd` folder made in "Building" below.
 
 ## Building
 
@@ -25,14 +44,22 @@ This produces `driver\mousehmd\bin\win64\driver_mousehmd.dll`.
 Run the tests with `cargo test` (run them separately in `tools\dashboardwatch` as well).
 GitHub Actions (`.github/workflows/test.yml`) runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` in both folders on Windows for every push to `main` and every pull request.
 
+Releases are made by GitHub Actions (`.github/workflows/release.yml`) when a tag named after the `version` in `Cargo.toml` (for example `v0.1.0`) is pushed. It packs the built DLL into a zip, attaches a build provenance attestation, and adds the zip to a draft release. Check the draft, then publish it by hand.
+The same zip can be made locally (it is written to `dist\out\`).
+
+```powershell
+cargo build --release --locked
+powershell -ExecutionPolicy Bypass -File .\dist\package.ps1 -Version v0.1.0
+```
+
 ## Registering with SteamVR
 
 Do this with SteamVR closed.
 
-1. Register the driver, either with `vrpathreg.exe`, which comes with SteamVR (in `SteamVR\bin\win64`), or by adding the absolute path of `driver\mousehmd` to `external_drivers` in `%LOCALAPPDATA%\openvr\openvrpaths.vrpath`.
+1. Register the driver, either with `vrpathreg.exe`, which comes with SteamVR (in `SteamVR\bin\win64`), or by adding the absolute path of the driver folder to `external_drivers` in `%LOCALAPPDATA%\openvr\openvrpaths.vrpath`. The driver folder is the `mousehmd` folder inside the extracted zip, or `driver\mousehmd` when built from source.
 
    ```powershell
-   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" adddriver "C:\path\to\mousehmd\driver\mousehmd"
+   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" adddriver "C:\Tools\mousehmd\mousehmd"
    ```
 
    Give the absolute path of the folder that contains `driver.vrdrivermanifest`, not of the DLL.
@@ -138,10 +165,10 @@ With `--open`, as in `cargo run --release -- --open 30`, the tool first opens th
 ## Uninstalling
 
 1. Close SteamVR. If `dashboardwatch` is running, stop it too.
-2. Unregister the driver, either with `vrpathreg.exe` or by deleting the path of `driver\mousehmd` from `external_drivers` in `%LOCALAPPDATA%\openvr\openvrpaths.vrpath`.
+2. Unregister the driver, either with `vrpathreg.exe` or by deleting the path of the driver folder you registered from `external_drivers` in `%LOCALAPPDATA%\openvr\openvrpaths.vrpath`.
 
    ```powershell
-   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" removedriver "C:\path\to\mousehmd\driver\mousehmd"
+   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" removedriver "C:\Tools\mousehmd\mousehmd"
    ```
 
    Give the same folder as when registering, the one that contains `driver.vrdrivermanifest`.
@@ -150,7 +177,7 @@ With `--open`, as in `cargo run --release -- --open 30`, the tool first opens th
    - `dashboard.enableDashboard` (set to `false` if you used an earlier version. If you do not know the original value and want to use the dashboard, delete it or set it to `true`)
    - `DismissedWarnings.DismissableWarning_DisplayInExtendedMode` (if you followed the steps to hide the notification)
    - The `driver_mousehmd` section (if you overrode settings)
-4. If no longer needed, delete the built DLL (`driver\mousehmd\bin`) and the tool's output (`dashboardwatch.log`).
+4. If no longer needed, delete the extracted folder (`driver\mousehmd\bin` if you built from source) and the tool's output (`dashboardwatch.log`).
 
 Restart SteamVR and check that your usual HMD is selected and that the dashboard is in the state you intend.
 

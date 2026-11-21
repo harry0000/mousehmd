@@ -2,3 +2,4 @@
 /driver/mousehmd/bin/
 /tools/dashboardwatch/target
 dashboardwatch.log
+/dist/out/

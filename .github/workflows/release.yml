@@ -1,0 +1,71 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 builds the driver, packs it with
+# dist/package.ps1 and creates a draft release with the zip attached.
+# Publish the draft by hand after checking it.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The driver calls the Win32 API and compiles its C++ part with MSVC.
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      # For the build provenance attestation of the zip.
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Check that the tag matches the crate version
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 --locked | ConvertFrom-Json).packages[0].version
+          if ("v$version" -ne $env:TAG) { throw "tag $env:TAG does not match version $version in Cargo.toml" }
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+      - name: Package
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: ./dist/package.ps1 -Version $env:TAG
+      # On GitHub Free, Pro and Team plans attestations exist only for public
+      # repositories, so a private repository releases without one.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        if: ${{ !github.event.repository.private }}
+        with:
+          subject-path: dist/out/mousehmd-${{ github.ref_name }}.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: |
+            dist/out/*.zip
+            dist/out/*.zip.sha256
+          if-no-files-found: error
+
+  release:
+    # Only this job can write to the repository, and it runs no build code.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: out
+      - name: Create a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --draft --verify-tag

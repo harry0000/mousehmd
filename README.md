@@ -11,6 +11,25 @@
 - `cpp/shim.cpp` — OpenVR のドライバインターフェース（C++ の抽象クラス）の実装
 - `cpp/openvr_driver.h` — Valve の OpenVR SDK ヘッダ（BSD-3-Clause、`cpp/OPENVR_LICENSE.txt`）
 - `driver/mousehmd/` — SteamVR に登録するドライバフォルダ。`resources/input/` に、仮想 HMD の入力プロファイルと、システムボタンをダッシュボードの開閉に結び付ける割り当てを置いている
+- `dist/` — リリース用の zip を作るスクリプトと、DLL に含まれる第三者のライセンス表示
+
+## 入手
+
+[Releases](https://github.com/harry0000/mousehmd/releases) から `mousehmd-vX.Y.Z.zip` をダウンロードし、消したり動かしたりしない場所（例: `C:\Tools\mousehmd`）に展開する。
+展開先のフォルダ名には版を入れず、新しい版も同じフォルダに展開する。エクスプローラーの「すべて展開」は zip と同じ名前（`mousehmd-vX.Y.Z`）のフォルダを提案するので、展開先を書き換える。
+展開した中の `mousehmd` フォルダを、下の「SteamVR への登録」の手順で登録する。ビルドは不要。
+動作には 64 ビットの Windows 10 以降と SteamVR が必要。
+
+新しい版に更新するときは、SteamVR を終了し、展開先のフォルダの中身を消してから、新しい zip を同じフォルダに展開する。登録し直す必要はない。
+別のフォルダに展開した場合は、古いフォルダの登録を解除してから、新しいフォルダを登録する。そうしないと、SteamVR は古いフォルダの DLL を読み込み続ける。
+
+zip がこのリポジトリの GitHub Actions でビルドされたものかは、[GitHub CLI](https://cli.github.com/) で確かめられる。
+
+```powershell
+gh attestation verify mousehmd-vX.Y.Z.zip --repo harry0000/mousehmd
+```
+
+ソースからビルドする場合は、次の「ビルド」の手順で作った `driver\mousehmd` を登録する。
 
 ## ビルド
 
@@ -25,14 +44,22 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 テストは `cargo test` で実行する（`tools\dashboardwatch` は、そのフォルダで別に実行する）。
 GitHub Actions（`.github/workflows/test.yml`）は、`main` への push と pull request のたびに、この 2 つのフォルダで `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test` を Windows 上で実行する。
 
+リリースは、`Cargo.toml` の `version` と同じ名前のタグ（例: `v0.1.0`）を push すると、GitHub Actions（`.github/workflows/release.yml`）が作る。ビルドした DLL を zip にまとめ、ビルドの出どころの証明（attestation）を付けて、下書きのリリースに添付する。内容を確かめてから手で公開する。
+同じ zip は手元でも作れる（`dist\out\` に出力される）。
+
+```powershell
+cargo build --release --locked
+powershell -ExecutionPolicy Bypass -File .\dist\package.ps1 -Version v0.1.0
+```
+
 ## SteamVR への登録
 
 SteamVR を終了した状態で行う。
 
-1. ドライバを登録する。SteamVR 同梱の `vrpathreg.exe`（`SteamVR\bin\win64` にある）を使うか、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` に `driver\mousehmd` の絶対パスを追加する。
+1. ドライバを登録する。SteamVR 同梱の `vrpathreg.exe`（`SteamVR\bin\win64` にある）を使うか、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` にドライバフォルダの絶対パスを追加する。ドライバフォルダは、zip を展開した場合はその中の `mousehmd`、ソースからビルドした場合は `driver\mousehmd`。
 
    ```powershell
-   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" adddriver "C:\path\to\mousehmd\driver\mousehmd"
+   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" adddriver "C:\Tools\mousehmd\mousehmd"
    ```
 
    パスは DLL ではなく、`driver.vrdrivermanifest` のあるフォルダを絶対パスで指定する。
@@ -138,10 +165,10 @@ cargo run --release
 ## アンインストール
 
 1. SteamVR を終了する。`dashboardwatch` を実行中なら、それも終了する。
-2. ドライバの登録を解除する。`vrpathreg.exe` を使うか、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` から `driver\mousehmd` のパスを削除する。
+2. ドライバの登録を解除する。`vrpathreg.exe` を使うか、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` から、登録したドライバフォルダのパスを削除する。
 
    ```powershell
-   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" removedriver "C:\path\to\mousehmd\driver\mousehmd"
+   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" removedriver "C:\Tools\mousehmd\mousehmd"
    ```
 
    パスは登録したときと同じ、`driver.vrdrivermanifest` のあるフォルダを指定する。
@@ -150,7 +177,7 @@ cargo run --release
    - `dashboard.enableDashboard`（以前の版を使っていた場合に `false` が書かれている。元の値が分からず、ダッシュボードを使いたい場合は削除するか `true` にする）
    - `DismissedWarnings.DismissableWarning_DisplayInExtendedMode`（通知を消す手順を実行した場合）
    - `driver_mousehmd` のセクション（設定を上書きしていた場合）
-4. 不要なら、ビルドした DLL（`driver\mousehmd\bin`）と、ツールの出力（`dashboardwatch.log`）を削除する。
+4. 不要なら、展開したフォルダ（ソースからビルドした場合は `driver\mousehmd\bin`）と、ツールの出力（`dashboardwatch.log`）を削除する。
 
 SteamVR を起動し直して、通常の HMD が選ばれ、ダッシュボードが意図した状態になっていることを確認する。
 
