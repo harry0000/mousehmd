@@ -5,79 +5,53 @@
 マウスとキーボードで向きを動かせる、SteamVR 用の仮想 HMD ドライバ。
 ゴーグルなしで VR アプリの視点を動かすためのもの。
 
-## 構成
+## 動作環境
 
-- `src/` — Rust。入力のポーリングと向き（yaw / pitch）の管理（`input.rs`）、判定と設定値の検証（`logic.rs`）、DLL のエントリポイント（`lib.rs`）
-- `cpp/shim.cpp` — OpenVR のドライバインターフェース（C++ の抽象クラス）の実装
-- `cpp/openvr_driver.h` — Valve の OpenVR SDK ヘッダ（BSD-3-Clause、`cpp/OPENVR_LICENSE.txt`）
-- `driver/mousehmd/` — SteamVR に登録するドライバフォルダ。`resources/input/` に、仮想 HMD の入力プロファイルと、システムボタンをダッシュボードの開閉に結び付ける割り当てを置いている
-- `dist/` — リリース用の zip を作るスクリプトと、DLL に含まれる第三者のライセンス表示
+| 項目 | 要件 |
+|---|---|
+| OS | 64 ビットの Windows 10 以降 |
+| SteamVR | 必須。動作を確認した版は 2.18.4 |
+| VR アプリ | 既定の入力対象は DMM VR Player（`DMMVRPlayer_Windows.exe`）と SteamVR のウィンドウ。[設定](#設定)の `anyWindow` で全ウィンドウに変更できる |
+| ランタイム | Visual C++ 再頒布可能パッケージ（`MSVCP140.dll`、`VCRUNTIME140.dll`）。SteamVR も同じものを使うので、SteamVR が動く PC には入っている |
+| ビルドする場合 | Rust 1.89.0（MSVC ツールチェーン）、Visual Studio の C++ ビルドツール |
 
-## 入手
+## インストール
 
-[Releases](https://github.com/harry0000/mousehmd/releases) から `mousehmd-vX.Y.Z.zip` をダウンロードし、消したり動かしたりしない場所（例: `C:\Tools\mousehmd`）に展開する。
-展開先のフォルダ名には版を入れず、新しい版も同じフォルダに展開する。エクスプローラーの「すべて展開」は zip と同じ名前（`mousehmd-vX.Y.Z`）のフォルダを提案するので、展開先を書き換える。
-展開した中の `mousehmd` フォルダを、下の「SteamVR への登録」の手順で登録する。ビルドは不要。
-動作には 64 ビットの Windows 10 以降と SteamVR が必要。
+1. SteamVR を終了する。
+2. [Releases](https://github.com/harry0000/mousehmd/releases) から `mousehmd-vX.Y.Z.zip` をダウンロードする。
+3. （任意）zip がこのリポジトリの GitHub Actions でビルドされたものか、[GitHub CLI](https://cli.github.com/) で確かめる。
 
-新しい版に更新するときは、SteamVR を終了し、展開先のフォルダの中身を消してから、新しい zip を同じフォルダに展開する。登録し直す必要はない。
-別のフォルダに展開した場合は、古いフォルダの登録を解除してから、新しいフォルダを登録する。そうしないと、SteamVR は古いフォルダの DLL を読み込み続ける。
+   ```powershell
+   gh attestation verify mousehmd-vX.Y.Z.zip --repo harry0000/mousehmd
+   ```
 
-zip がこのリポジトリの GitHub Actions でビルドされたものかは、[GitHub CLI](https://cli.github.com/) で確かめられる。
-
-```powershell
-gh attestation verify mousehmd-vX.Y.Z.zip --repo harry0000/mousehmd
-```
-
-ソースからビルドする場合は、次の「ビルド」の手順で作った `driver\mousehmd` を登録する。
-
-## ビルド
-
-SteamVR を終了した状態で実行する。Rust（MSVC ツールチェーン）と Visual Studio の C++ ビルドツールが必要。
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1
-```
-
-`driver\mousehmd\bin\win64\driver_mousehmd.dll` ができる。
-
-テストは `cargo test` で実行する（`tools\dashboardwatch` は、そのフォルダで別に実行する）。
-GitHub Actions（`.github/workflows/test.yml`）は、`main` への push と pull request のたびに、この 2 つのフォルダで `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test` を Windows 上で実行する。
-GitHub Actions のアクションと Cargo の依存クレートは、Dependabot（`.github/dependabot.yml`）が週 1 回確かめ、新しい版が出て 7 日たったものを pull request で提案する。Rust のツールチェーン（`.github/actions/setup/action.yml`）は対象外なので、手で更新する。
-
-リリースは、`Cargo.toml` の `version` と同じ名前のタグ（例: `v0.1.0`）を push すると、GitHub Actions（`.github/workflows/release.yml`）が作る。ビルドした DLL を zip にまとめ、ビルドの出どころの証明（attestation）を付けて、下書きのリリースに添付する。内容を確かめてから手で公開する。
-同じ zip は手元でも作れる（`dist\out\` に出力される）。
-
-```powershell
-cargo build --release --locked
-powershell -ExecutionPolicy Bypass -File .\dist\package.ps1 -Version v0.1.0
-```
-
-## SteamVR への登録
-
-SteamVR を終了した状態で行う。
-
-1. ドライバを登録する。SteamVR 同梱の `vrpathreg.exe`（`SteamVR\bin\win64` にある）を使うか、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` にドライバフォルダの絶対パスを追加する。ドライバフォルダは、zip を展開した場合はその中の `mousehmd`、ソースからビルドした場合は `driver\mousehmd`。
+4. 版を含まない名前のフォルダ（例: `C:\Tools\mousehmd`）に展開する。エクスプローラーの「すべて展開」は `mousehmd-vX.Y.Z` を提案するので、展開先を書き換える。
+5. 展開した中の `mousehmd` フォルダ（`driver.vrdrivermanifest` のあるフォルダ）を、SteamVR 同梱の `vrpathreg.exe` で登録する。
 
    ```powershell
    & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" adddriver "C:\Tools\mousehmd\mousehmd"
    ```
 
-   パスは DLL ではなく、`driver.vrdrivermanifest` のあるフォルダを絶対パスで指定する。
-2. `Steam\config\steamvr.vrsettings` の `steamvr` に `"forcedDriver": "mousehmd"` と `"activateMultipleDrivers": true` を書く。
+   `vrpathreg.exe` を使う代わりに、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` に絶対パスを追加してもよい。
+6. `Steam\config\steamvr.vrsettings` の `steamvr` に `"forcedDriver": "mousehmd"` と `"activateMultipleDrivers": true` を書く。
+   すでにある項目は、書き換える前の値を控えておく（アンインストールで戻すときに使う）。どちらも SteamVR 全体の設定で、ドライバを消しても残る。
+7. SteamVR を起動する。DMM VR Player または SteamVR の表示ウィンドウを前面にして、右ボタンのドラッグで視点が動けば完了。
+   動かない場合は、`Steam\logs\vrserver.txt` に `mousehmd: activated` が出ているか確かめる。
+8. （任意）起動時の通知を消す（[起動時の「ヘッドセット通知」を消す](#起動時のヘッドセット通知を消す)）。
 
-どちらも SteamVR 全体の設定で、ドライバを消しても残る。
-2 で書く 2 つの項目がすでにあった場合は、書き換える前の値を控えておく。アンインストールで元に戻すときに必要になる。
+## 更新
 
-### 以前の版から更新する場合
+1. SteamVR を終了する。
+2. 展開先のフォルダの中身を消す。
+3. 新しい zip を同じフォルダに展開する。登録し直す必要はない。
 
-以前の版は、既定でダッシュボードを無効にしていた（起動時に `steamvr.vrsettings` の `dashboard.enableDashboard` を `false` に書き換えていた）。
-今の版は SteamVR のこの設定に触らないが、すでに書き込まれた値は更新しても自動では戻らない。ダッシュボードを使う（M で開閉する）場合は、SteamVR を終了した状態で `dashboard.enableDashboard` を削除するか `true` にする。
-意図して無効にしている場合は、そのままでよい。
+別のフォルダに展開した場合は、古いフォルダを `vrpathreg.exe removedriver` で外してから、新しいフォルダを `adddriver` で登録する。外さないと、SteamVR は古いフォルダの DLL を読み込み続ける。
+
+ダッシュボードを無効にしていた以前の版（起動時に `dashboard.enableDashboard` を `false` に書き換えていた）から更新した場合は、SteamVR を終了した状態で `steamvr.vrsettings` の `dashboard.enableDashboard` を削除するか `true` にする。意図して無効にしている場合は、そのままでよい。
 
 ## 操作
 
-対象ウィンドウが前面にあるときだけ反応する。マウスは VR アプリと SteamVR のウィンドウの両方で効く。キーは VR アプリのウィンドウで効き、SteamVR のウィンドウでは F9 だけが効く。
+対象ウィンドウが前面にあるときだけ反応する。
 
 | 操作 | VR アプリ | SteamVR のウィンドウ | 動作 |
 |---|---|---|---|
@@ -88,23 +62,17 @@ SteamVR を終了した状態で行う。
 | M | ○ | － | SteamVR のダッシュボードを開く / 閉じる |
 | F9 | － | ○ | SteamVR のダッシュボードを開く / 閉じる |
 
-対象は実行ファイル名で判定する（大文字小文字は区別しない）。一覧は `src/input.rs` の `APP_PROCESSES`（VR アプリ）と `STEAMVR_PROCESSES`（SteamVR のウィンドウ）。
-SteamVR のウィンドウで F9 以外のキーを無視するのは、SteamVR 自身がキー操作を持っているため（表示ウィンドウで M を押すと Legacy Mirror が開く、など）。
-そのためダッシュボードの開閉には、SteamVR のウィンドウでは何も割り当てられていない F9 を使う。VR アプリを起動していなくても、SteamVR のウィンドウからダッシュボードを開閉できる。
-
-M と F9 はコントローラのシステムボタンの代わりで、SteamVR が予約している入力 `/input/system/click` として送る。
-コントローラがないと、開いたダッシュボードを閉じる手段がほかにない。
-入力を送るだけでは効かず、同梱の割り当て（`resources/input/bindings/vrcompositor_bindings_mousehmd.json`）がこの入力を `ToggleDashboard` に結び付けている。
-
-キーは前面のアプリにもそのまま届く。Ctrl・Alt・Shift・Space・Enter・矢印キー・WASD は Unity の既定の入力割り当てなので避けている。
-Ctrl・Alt・Shift・Windows キーを押している間は、I / K / J / L / H / M / F9 を無視する（`Ctrl+H` などはアプリ側のショートカットとみなす）。マウス操作には影響しない。
-M と F9 は、対象のウィンドウで押し始めたときだけ受け付ける。`Ctrl+F9` から Ctrl だけを先に離した場合や、キーを押したまま別のウィンドウから切り替えた場合は、押し直すまで反応しない。
+- 対象は実行ファイル名で判定する（大文字小文字は区別しない）。一覧は `src/input.rs` の `APP_PROCESSES`（VR アプリ）と `STEAMVR_PROCESSES`（SteamVR のウィンドウ）。
+- SteamVR のウィンドウでは F9 以外のキーを無視する。SteamVR 自身のキー操作と重なるため（表示ウィンドウで M を押すと Legacy Mirror が開く、など）。VR アプリを起動していなくても、SteamVR のウィンドウから F9 でダッシュボードを開閉できる。
+- M と F9 はコントローラのシステムボタンの代わりで、SteamVR が予約している入力 `/input/system/click` として送る。コントローラがないと、開いたダッシュボードを閉じる手段はほかにない。入力を送るだけでは効かないので、同梱の割り当て（`resources/input/bindings/vrcompositor_bindings_mousehmd.json`）でこの入力を `ToggleDashboard` に結び付けている。
+- キーは前面のアプリにもそのまま届く。Ctrl・Alt・Shift・Space・Enter・矢印キー・WASD は Unity の既定の入力割り当てなので避けている。
+- Ctrl・Alt・Shift・Windows キーを押している間は、I / K / J / L / H / M / F9 を無視する（`Ctrl+H` などはアプリ側のショートカットとみなす）。マウス操作には影響しない。
+- M と F9 は、対象のウィンドウで押し始めたときだけ受け付ける。`Ctrl+F9` から Ctrl だけを先に離した場合や、キーを押したまま別のウィンドウから切り替えた場合は、押し直すまで反応しない。
 
 ## 設定
 
-既定値は `driver/mousehmd/resources/settings/default.vrsettings`。
+`steamvr.vrsettings` に `driver_mousehmd` セクションを書いて上書きする。既定値は `driver/mousehmd/resources/settings/default.vrsettings`。
 範囲外の値や数値として不正な値は、安全な範囲に丸めるか既定値に置き換える（ウィンドウの各辺は 64〜16384 ピクセル、`renderScale` は 0.25〜4 で、描画サイズが 16384 ピクセルを超えない範囲）。
-変えるときは `steamvr.vrsettings` に `driver_mousehmd` セクションを書いて上書きする。
 
 | キー | 既定値 | 意味 |
 |---|---|---|
@@ -122,16 +90,16 @@ M と F9 は、対象のウィンドウで押し始めたときだけ受け付�
 
 ## 起動時の「ヘッドセット通知」を消す
 
-SteamVR は起動のたびに「ヘッドセットがモニターとして実行されていることを SteamVR が検出しました」という通知を出す。
-ウィンドウに表示する仮想 HMD では常にこの条件に当てはまる。動作には影響しない。
+SteamVR は起動のたびに「ヘッドセットがモニターとして実行されていることを SteamVR が検出しました」という通知を出す。ウィンドウに表示する仮想 HMD では常にこの条件に当てはまる。動作には影響しない。
 
-SteamVR を起動した状態で、`Win + R` の「ファイル名を指定して実行」から次を実行すると、以後は表示されなくなる。
+1. SteamVR を起動する。
+2. `Win + R` の「ファイル名を指定して実行」で、次を実行する。
 
-```
-vrmonitor://ignoredismissablewarning/DisplayInExtendedMode
-```
+   ```
+   vrmonitor://ignoredismissablewarning/DisplayInExtendedMode
+   ```
 
-これは SteamVR 自身の「警告を無視する」機能を呼び出すもので、`steamvr.vrsettings` に次の項目が書き込まれる。
+SteamVR 自身の「警告を無視する」機能が呼び出され、`steamvr.vrsettings` に次の項目が書き込まれる。
 
 ```json
 "DismissedWarnings": {
@@ -139,10 +107,81 @@ vrmonitor://ignoredismissablewarning/DisplayInExtendedMode
 }
 ```
 
-止まるのは表示だけで、SteamVR は引き続き同じ状態を検出している。
-実機の HMD をつないだときにも同じ警告が出なくなるので、戻したいときはこの項目を削除する。
+止まるのは表示だけで、SteamVR は引き続き同じ状態を検出している。実機の HMD をつないだときにも同じ警告が出なくなるので、戻したいときはこの項目を削除する。
 
-## 確認ツール
+## 副作用
+
+| 対象 | 影響 |
+|---|---|
+| `steamvr.forcedDriver` | インストールの手順で SteamVR のドライバ選択を `mousehmd` に固定する。実機の HMD を使うときは戻す必要がある |
+| キー入力 | 読んだキーは前面のアプリにも届くので、アプリが同じキーに操作を割り当てていると両方が動く。ほかのソフトが F9 を PC 全体のホットキーにしている場合も、SteamVR のウィンドウで押すと両方が動く。`anyWindow: true` にすると、どのウィンドウが前面でもマウスとキーの両方に反応する |
+| 装着状態 | 仮想 HMD は常に「装着中」と報告する。ヘッドセットを外したときの待機や一時停止は働かない |
+| 実行中の負荷 | 入力と姿勢通知のスレッドが約 2 ミリ秒間隔で動き、タイマー分解能 1 ミリ秒を要求する。CPU の起床回数と消費電力がわずかに増える |
+| 出力ファイル | `dashboardwatch` は実行したフォルダの `dashboardwatch.log` を上書きする |
+
+## アンインストール
+
+1. SteamVR を終了する。`dashboardwatch` を実行中なら、それも終了する。
+2. 登録したドライバフォルダを `vrpathreg.exe` で外す（`openvrpaths.vrpath` の `external_drivers` から削除してもよい）。
+
+   ```powershell
+   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" removedriver "C:\Tools\mousehmd\mousehmd"
+   ```
+
+3. `Steam\config\steamvr.vrsettings` を導入前の状態に戻す。新しく追加した項目は削除し、書き換えた項目は控えておいた元の値に戻す。
+   - `steamvr.forcedDriver` と `steamvr.activateMultipleDrivers`（インストールの手順 6 で書いたもの）
+   - `dashboard.enableDashboard`（以前の版を使っていた場合に `false` が書かれている。元の値が分からず、ダッシュボードを使いたい場合は削除するか `true` にする）
+   - `DismissedWarnings.DismissableWarning_DisplayInExtendedMode`（通知を消す手順を実行した場合）
+   - `driver_mousehmd` のセクション（設定を上書きしていた場合）
+4. 展開したフォルダ（ソースからビルドした場合は `driver\mousehmd\bin`）と、`dashboardwatch.log` を削除する。
+5. SteamVR を起動し、通常の HMD が選ばれていること、ダッシュボードが意図した状態になっていることを確かめる。
+
+## 開発
+
+### 構成
+
+- `src/` — Rust。入力のポーリングと向き（yaw / pitch）の管理（`input.rs`）、判定と設定値の検証（`logic.rs`）、DLL のエントリポイント（`lib.rs`）
+- `cpp/shim.cpp` — OpenVR のドライバインターフェース（C++ の抽象クラス）の実装
+- `cpp/openvr_driver.h` — Valve の OpenVR SDK ヘッダ（BSD-3-Clause、`cpp/OPENVR_LICENSE.txt`）
+- `driver/mousehmd/` — SteamVR に登録するドライバフォルダ。`resources/input/` に、仮想 HMD の入力プロファイルと、システムボタンをダッシュボードの開閉に結び付ける割り当てを置いている
+- `dist/` — リリース用の zip を作るスクリプトと、DLL に含まれる第三者のライセンス表示
+- `tools/dashboardwatch/` — ダッシュボードの開閉を確かめるツール
+
+### ビルドとテスト
+
+1. SteamVR を終了する（起動中は DLL がロックされていてビルドが失敗する）。
+2. ビルドする。`driver\mousehmd\bin\win64\driver_mousehmd.dll` ができる。
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\build.ps1
+   ```
+
+3. ルートからテストする。
+
+   ```powershell
+   cargo test
+   cargo test --manifest-path tools\dashboardwatch\Cargo.toml
+   ```
+
+4. [インストール](#インストール)の手順 5 以降を行い、`adddriver` の例のパスは、ビルドした `driver\mousehmd` フォルダの絶対パスに置き換える。
+
+GitHub Actions（`.github/workflows/test.yml`）は、`main` への push と pull request のたびに、この 2 つのフォルダで `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test` を Windows 上で実行する。
+GitHub Actions のアクションと Cargo の依存クレートは、Dependabot（`.github/dependabot.yml`）が週 1 回確かめ、新しい版が出て 7 日たったものを pull request で提案する。Rust のツールチェーン（`.github/actions/setup/action.yml`）は対象外なので、手で更新する。
+
+### リリース
+
+1. リリースする版を決め、必要なら `Cargo.toml` の `version` を更新する。版を変更した場合は `cargo check` で `Cargo.lock` も更新する。リリースに含む変更をコミットする。
+2. そのコミットに `v` と `version` を合わせたタグ（例: `v0.1.0`）を付けて push する。GitHub Actions（`.github/workflows/release.yml`）がビルドした DLL を zip にまとめ、ビルドの出どころの証明（attestation）を付けて、下書きのリリースに添付する。
+3. 下書きの内容を確かめてから、手で公開する。
+
+同じ zip は手元でも作れる（`dist\out\` に出力される）。
+
+```powershell
+cargo build --release --locked
+powershell -ExecutionPolicy Bypass -File .\dist\package.ps1 -Version v0.1.0
+```
+
+### 確認ツール
 
 `tools/dashboardwatch` は、SteamVR のダッシュボードが表示中かどうかを SteamVR に問い合わせ、変化した時刻を `dashboardwatch.log` に 1 行ずつ書き出す（既定で 60 秒間）。キー操作でダッシュボードが開閉したかを、画面を見ずに確かめるためのもの。
 
@@ -152,35 +191,6 @@ cargo run --release
 ```
 
 `cargo run --release -- --open 30` のように `--open` を付けると、最初にダッシュボードを開き、表示されたのを確かめてから 30 秒間の記録を始める。閉じる操作を毎回同じ条件で試すためのもの。開いたこと自体は変化の回数に数えない。5 秒以内に表示されなければ、記録を始めずにエラーで終わる（終了コードが 0 以外になり、理由が `dashboardwatch.log` に残る）。
-
-## 副作用
-
-| 対象 | 影響 |
-|---|---|
-| `steamvr.forcedDriver` | 登録手順で SteamVR のドライバ選択を `mousehmd` に固定する。実機の HMD を使うときは戻す必要がある |
-| キー入力 | 読んだキーは前面のアプリにも届くので、アプリが同じキーに操作を割り当てていると両方が動く。ほかのソフトが F9 を PC 全体のホットキーにしている場合も、SteamVR のウィンドウで押すと両方が動く。`anyWindow: true` にすると、どのウィンドウが前面でもマウスとキーの両方に反応する |
-| 装着状態 | 仮想 HMD は常に「装着中」と報告する。ヘッドセットを外したときの待機や一時停止は働かない |
-| 実行中の負荷 | 入力と姿勢通知のスレッドが約 2 ミリ秒間隔で動き、タイマー分解能 1 ミリ秒を要求する。CPU の起床回数と消費電力がわずかに増える |
-| 出力ファイル | `dashboardwatch` は実行したフォルダの `dashboardwatch.log` を上書きする |
-
-## アンインストール
-
-1. SteamVR を終了する。`dashboardwatch` を実行中なら、それも終了する。
-2. ドライバの登録を解除する。`vrpathreg.exe` を使うか、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` から、登録したドライバフォルダのパスを削除する。
-
-   ```powershell
-   & "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrpathreg.exe" removedriver "C:\Tools\mousehmd\mousehmd"
-   ```
-
-   パスは登録したときと同じ、`driver.vrdrivermanifest` のあるフォルダを指定する。
-3. `Steam\config\steamvr.vrsettings` を、導入前の状態に戻す。導入時に新しく追加した項目は削除し、既存の値を書き換えた項目は控えておいた元の値に戻す。対象は次のとおり。
-   - `steamvr.forcedDriver` と `steamvr.activateMultipleDrivers`（登録手順で書いたもの）
-   - `dashboard.enableDashboard`（以前の版を使っていた場合に `false` が書かれている。元の値が分からず、ダッシュボードを使いたい場合は削除するか `true` にする）
-   - `DismissedWarnings.DismissableWarning_DisplayInExtendedMode`（通知を消す手順を実行した場合）
-   - `driver_mousehmd` のセクション（設定を上書きしていた場合）
-4. 不要なら、展開したフォルダ（ソースからビルドした場合は `driver\mousehmd\bin`）と、ツールの出力（`dashboardwatch.log`）を削除する。
-
-SteamVR を起動し直して、通常の HMD が選ばれ、ダッシュボードが意図した状態になっていることを確認する。
 
 ## ライセンス
 
