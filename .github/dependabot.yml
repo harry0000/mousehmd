@@ -1,0 +1,29 @@
+# Actions are pinned to commit SHAs and crates to Cargo.lock, so nothing
+# moves on its own. Dependabot opens pull requests when new versions come out,
+# keeping the SHA pins and their version comments in step.
+#
+# A new version is only proposed once it has been out for 14 days, so that a
+# compromised release is likely to be noticed and pulled before it is
+# offered here. Security updates are not delayed.
+#
+# The Rust toolchain is pinned separately in .github/actions/setup/action.yml
+# and is not covered. A crate update that changes what is linked into the DLL
+# also needs dist/THIRD_PARTY_LICENSES.txt updated; dist/package.ps1 refuses
+# to package until it is.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+
+  - package-ecosystem: cargo
+    directories:
+      - /
+      - /tools/dashboardwatch
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14

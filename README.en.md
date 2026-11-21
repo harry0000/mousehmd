@@ -43,6 +43,7 @@ This produces `driver\mousehmd\bin\win64\driver_mousehmd.dll`.
 
 Run the tests with `cargo test` (run them separately in `tools\dashboardwatch` as well).
 GitHub Actions (`.github/workflows/test.yml`) runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` in both folders on Windows for every push to `main` and every pull request.
+Dependabot (`.github/dependabot.yml`) checks the GitHub Actions and the Cargo dependencies once a week, and proposes a new version in a pull request once it has been out for 14 days. The Rust toolchain (`.github/actions/setup/action.yml`) is not covered and is updated by hand.
 
 Releases are made by GitHub Actions (`.github/workflows/release.yml`) when a tag named after the `version` in `Cargo.toml` (for example `v0.1.0`) is pushed. It packs the built DLL into a zip, attaches a build provenance attestation, and adds the zip to a draft release. Check the draft, then publish it by hand.
 The same zip can be made locally (it is written to `dist\out\`).
