@@ -1,5 +1,7 @@
 # mousehmd
 
+[English](README.en.md) | 日本語
+
 マウスとキーボードで向きを動かせる、SteamVR 用の仮想 HMD ドライバ。
 ゴーグルなしで VR アプリの視点を動かすためのもの。
 
