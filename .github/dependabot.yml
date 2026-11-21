@@ -2,7 +2,7 @@
 # moves on its own. Dependabot opens pull requests when new versions come out,
 # keeping the SHA pins and their version comments in step.
 #
-# A new version is only proposed once it has been out for 14 days, so that a
+# A new version is only proposed once it has been out for 7 days, so that a
 # compromised release is likely to be noticed and pulled before it is
 # offered here. Security updates are not delayed.
 #
@@ -17,7 +17,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 14
+      default-days: 7
 
   - package-ecosystem: cargo
     directories:
@@ -26,4 +26,4 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 14
+      default-days: 7

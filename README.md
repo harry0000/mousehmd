@@ -43,7 +43,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 テストは `cargo test` で実行する（`tools\dashboardwatch` は、そのフォルダで別に実行する）。
 GitHub Actions（`.github/workflows/test.yml`）は、`main` への push と pull request のたびに、この 2 つのフォルダで `cargo fmt --check`・`cargo clippy --all-targets -- -D warnings`・`cargo test` を Windows 上で実行する。
-GitHub Actions のアクションと Cargo の依存クレートは、Dependabot（`.github/dependabot.yml`）が週 1 回確かめ、新しい版が出て 14 日たったものを pull request で提案する。Rust のツールチェーン（`.github/actions/setup/action.yml`）は対象外なので、手で更新する。
+GitHub Actions のアクションと Cargo の依存クレートは、Dependabot（`.github/dependabot.yml`）が週 1 回確かめ、新しい版が出て 7 日たったものを pull request で提案する。Rust のツールチェーン（`.github/actions/setup/action.yml`）は対象外なので、手で更新する。
 
 リリースは、`Cargo.toml` の `version` と同じ名前のタグ（例: `v0.1.0`）を push すると、GitHub Actions（`.github/workflows/release.yml`）が作る。ビルドした DLL を zip にまとめ、ビルドの出どころの証明（attestation）を付けて、下書きのリリースに添付する。内容を確かめてから手で公開する。
 同じ zip は手元でも作れる（`dist\out\` に出力される）。
