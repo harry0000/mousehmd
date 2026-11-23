@@ -34,6 +34,15 @@
 
    `vrpathreg.exe` を使う代わりに、`%LOCALAPPDATA%\openvr\openvrpaths.vrpath` の `external_drivers` に絶対パスを追加してもよい。
 6. `Steam\config\steamvr.vrsettings` の `steamvr` に `"forcedDriver": "mousehmd"` と `"activateMultipleDrivers": true` を書く。
+
+   ```json
+   "steamvr" : {
+      "activateMultipleDrivers" : true,
+      "forcedDriver" : "mousehmd",
+      ...
+   }
+   ```
+
    すでにある項目は、書き換える前の値を控えておく（アンインストールで戻すときに使う）。どちらも SteamVR 全体の設定で、ドライバを消しても残る。
 7. SteamVR を起動する。DMM VR Player または SteamVR の表示ウィンドウを前面にして、右ボタンのドラッグで視点が動けば完了。
    動かない場合は、`Steam\logs\vrserver.txt` に `mousehmd: activated` が出ているか確かめる。
@@ -73,6 +82,16 @@
 
 `steamvr.vrsettings` に `driver_mousehmd` セクションを書いて上書きする。既定値は `driver/mousehmd/resources/settings/default.vrsettings`。
 範囲外の値や数値として不正な値は、安全な範囲に丸めるか既定値に置き換える（ウィンドウの各辺は 64〜16384 ピクセル、`renderScale` は 0.25〜4 で、描画サイズが 16384 ピクセルを超えない範囲）。
+
+例: 表示ウィンドウを 1280×720 にし、視点の動きを少しなめらかにする場合（`steamvr` と同じ階層に書く）。
+
+```json
+"driver_mousehmd" : {
+   "windowWidth" : 1280,
+   "windowHeight" : 720,
+   "smoothingMs" : 30
+},
+```
 
 | キー | 既定値 | 意味 |
 |---|---|---|
