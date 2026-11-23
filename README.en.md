@@ -34,6 +34,15 @@ It lets you look around in VR apps without a headset.
 
    Instead of `vrpathreg.exe`, you can add the absolute path to `external_drivers` in `%LOCALAPPDATA%\openvr\openvrpaths.vrpath`.
 6. In `Steam\config\steamvr.vrsettings`, add `"forcedDriver": "mousehmd"` and `"activateMultipleDrivers": true` to `steamvr`.
+
+   ```json
+   "steamvr" : {
+      "activateMultipleDrivers" : true,
+      "forcedDriver" : "mousehmd",
+      ...
+   }
+   ```
+
    If either already exists, note its value before changing it (you need it to restore the setting when uninstalling). Both are settings of SteamVR as a whole and stay after the driver is removed.
 7. Start SteamVR. Bring DMM VR Player or SteamVR's display window to the front. If dragging with the right button turns the view, you are done.
    If not, check that `Steam\logs\vrserver.txt` contains `mousehmd: activated`.
@@ -73,6 +82,16 @@ The driver only reacts while one of its target windows is in front.
 
 Override them in a `driver_mousehmd` section in `steamvr.vrsettings`. The defaults are in `driver/mousehmd/resources/settings/default.vrsettings`.
 Values out of range or not valid numbers are clamped to a safe range or replaced by the default (each window edge 64–16384 pixels, `renderScale` 0.25–4, limited so that the render size stays within 16384 pixels).
+
+For example, to make the display window 1280×720 and smooth the view's movement a little (at the same level as `steamvr`):
+
+```json
+"driver_mousehmd" : {
+   "windowWidth" : 1280,
+   "windowHeight" : 720,
+   "smoothingMs" : 30
+},
+```
 
 | Key | Default | Meaning |
 |---|---|---|
